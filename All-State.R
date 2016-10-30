@@ -10,6 +10,7 @@ library(ROCR)
 library(gam)
 library(mgcv)
 library(Metrics)
+library(glmnet)
 
 set.seed(50)
 setwd("C:/R-Studio/AllState")

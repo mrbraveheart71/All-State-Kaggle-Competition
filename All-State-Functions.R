@@ -51,14 +51,14 @@ getCategoryNWayInteraction <- function(x_train, y_train, x_test=NULL,trainOrAppl
       if (trainOrApply=='T')  {
         train[idx_out_of_sample,colMeanResponseName] <- n_Way_Results[train[idx_out_of_sample,category_vector,with=FALSE], list(Mean.Response)]
         #train[idx_out_of_sample,colMedianResponseName] <- n_Way_Results[train[idx_out_of_sample,category_vector,with=FALSE], list(Median.Response)]
-        train[idx_out_of_sample,colCountResponseName] <- n_Way_Results[train[idx_out_of_sample,category_vector,with=FALSE], list(Count)]
+        #train[idx_out_of_sample,colCountResponseName] <- n_Way_Results[train[idx_out_of_sample,category_vector,with=FALSE], list(Count)]
         #train[idx_out_of_sample,colMaxResponseName] <- n_Way_Results[train[idx_out_of_sample,category_vector,with=FALSE], list(Max.Response)]
         #train[idx_out_of_sample,colMinResponseName] <- n_Way_Results[train[idx_out_of_sample,category_vector,with=FALSE], list(Min.Response)]
         #train[idx_out_of_sample,colSDResponseName] <- n_Way_Results[train[idx_out_of_sample,category_vector,with=FALSE], list(SD.Response)]
       } else {
         test[,colMeanResponseName] <- n_Way_Results[test[,category_vector,with=FALSE], list(Mean.Response)]
         #test[,colMedianResponseName] <- n_Way_Results[test[,category_vector,with=FALSE], list(Median.Response)]
-        test[,colCountResponseName] <- n_Way_Results[test[,category_vector,with=FALSE], list(Count)]
+        #test[,colCountResponseName] <- n_Way_Results[test[,category_vector,with=FALSE], list(Count)]
         #test[,colMaxResponseName] <- n_Way_Results[test[,category_vector,with=FALSE], list(Max.Response)]
         #test[,colMinResponseName] <- n_Way_Results[test[,category_vector,with=FALSE], list(Min.Response)]
         #test[,colSDResponseName] <- n_Way_Results[test[,category_vector,with=FALSE], list(SD.Response)]
