@@ -47,6 +47,7 @@ getCategoryNWayInteraction <- function(x_train, y_train, x_test=NULL,trainOrAppl
                                               Max.Response=max(y_train),Min.Response=min(y_train),SD.Response=sd(y_train),
                                               Count=length(y_train)),by=category_vector]
       setkeyv(n_Way_Results,category_vector)
+      mean_y <- mean(y_train)
       
       if (trainOrApply=='T')  {
         train[idx_out_of_sample,colMeanResponseName] <- n_Way_Results[train[idx_out_of_sample,category_vector,with=FALSE], list(Mean.Response)]
@@ -66,6 +67,7 @@ getCategoryNWayInteraction <- function(x_train, y_train, x_test=NULL,trainOrAppl
       }
   } # end of For Loop with Folds
   
+  
   # returnCols <- c(colMeanResponseName,colMedianResponseName,colCountResponseName, colMaxResponseName,colMinResponseName,colSDResponseName)
   # returnCols <- c(colMeanResponseName, colCountResponseName)
   if (trainOrApply=='T') {
@@ -77,5 +79,6 @@ getCategoryNWayInteraction <- function(x_train, y_train, x_test=NULL,trainOrAppl
   }
   if (eliminateOrigColumns==FALSE) category_vector <- NULL
   returnCols <- setdiff(colnames(return),c(category_vector,"y_train"))
-  return[,returnCols,with=FALSE]
+  #return[,colMeanResponseName] <- ifelse(is.na(return[,colMeanResponseName,with=FALSE]),mean_y, return[,colMeanResponseName,with=FALSE])
+  return <- return[,returnCols,with=FALSE]
 }

@@ -12,6 +12,7 @@ library(randomForest)
 
 set.seed(50)
 setwd("C:/R-Studio/All-State-Kaggle-Competition")
+source("All-State-Functions.R")
 
 ID = 'id'
 TARGET = 'loss'
@@ -47,3 +48,28 @@ x_test = train_test[(ntrain+1):nrow(train_test),]
 
 feature_names <- colnames(x_train)
 category_names <- colnames(x_train)[which(colnames(x_train) %like% 'cat')]
+
+for (cat in category_names) {
+  print(paste0('Work on category ',cat))
+  x_test <- getCategoryNWayInteraction(x_train,y_train,x_test,'A',cat,5,eliminateOrigColumns=TRUE,FALSE)
+  x_train <- getCategoryNWayInteraction(x_train,y_train,x_test,'T',cat,5,eliminateOrigColumns=TRUE,FALSE)
+}
+
+mean_y <- mean(y_train)
+
+# replace na with mean
+for (i in names(x_train))
+  x_train[is.na(get(i)),i:=mean_y,with=FALSE]
+for (i in names(x_test))
+  x_test[is.na(get(i)),i:=mean_y,with=FALSE]
+
+feature.names <- colnames(x_train)
+
+s <- sample(1:nrow(x_train),0.02*nrow(x_train))
+rf.fit <- randomForest(x_train[s],y=y_train[s],ntree=50)
+mae(exp(y_train[s]),exp(rf.fit$predicted))
+
+
+
+
+
