@@ -65,10 +65,10 @@ for (i in names(x_test))
 
 feature.names <- colnames(x_train)
 
-s <- sample(1:nrow(x_train),0.02*nrow(x_train))
-rf.fit <- randomForest(x_train[s],y=y_train[s],ntree=50)
+s <- sample(1:nrow(x_train),0.2*nrow(x_train))
+rf.fit <- randomForest(x_train[s],y=y_train[s],ntree=100,mtry=2,do.trace=TRUE)
 mae(exp(y_train[s]),exp(rf.fit$predicted))
-
+varImpPlot(rf.fit)
 
 
 
