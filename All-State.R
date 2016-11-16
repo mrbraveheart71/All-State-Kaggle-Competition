@@ -11,6 +11,7 @@ library(gam)
 library(mgcv)
 library(Metrics)
 library(glmnet)
+library(stringr)
 
 set.seed(50)
 setwd("C:/R-Studio/All-State-Kaggle-Competition")
@@ -27,9 +28,9 @@ logregobj <- function(preds, dtrain) {
   labels = getinfo(dtrain, "label")
   con = 2
   x = preds - labels
-  grad = con * x / (abs(x) + con)
-  hess = con^2  / (abs(x) + con) ^2
-  return  (list(grad, hess))
+  grad = (con * x) / (abs(x) + con)
+  hess = (con^2)  / (abs(x) + con) ^2
+  return(list(grad = grad, hess = hess))
 }
 
 ID = 'id'
@@ -54,20 +55,27 @@ orig_cat_names <- colnames(train)[which(colnames(train) %like% 'cat')]
 orig_num_names <- colnames(train)[which(colnames(train) %like% 'cont')]
 
 ntrain = nrow(train)
-train_test = rbind(train, test)
+train_test_orig = rbind(train, test)
+
+train_test <- train_test_orig
+
+cat_names_size <- apply(train_test_orig[,orig_cat_names,with=FALSE],2,function(x) max(nchar(x)))
 
 # Pre-processing
+# def encode(charcode):
+#   r = 0
+# ln = len(charcode)
+# for i in range(ln):
+#   r += (ord(charcode[i])-ord('A')+1)*26**(ln-i-1)
+# return r
+
+# Please right pad the characters by sign @
 encodeCharacter <- function(charcode) {
   r = 0
   ln = nchar(charcode)
-  if (ln > 2) {
-    print("Error: Expected Maximum of Two Characters!")
-    exit
-  }
-  firstLetter <- as.integer(charToRaw(substring(charcode,1,1)))-as.integer(charToRaw('A'))
-  secondLetter <- 0
-  if (ln > 1) secondLetter <- as.integer(charToRaw(substring(charcode,2,2)))-as.integer(charToRaw('A'))+1
-  r = firstLetter*27+secondLetter
+  for (i in 1:ln)  
+    r = r + (as.integer(charToRaw(substr(charcode,i,i)))-
+              as.integer(charToRaw('@')))  * 27^(ln-i)  
   r
 }
 
@@ -82,7 +90,10 @@ encodeCharacter <- function(charcode) {
 for (f in features) {
   print(paste0('Feature : ',f))
   if (class(train_test[[f]])=="character") {
-    train_test[[f]] <- apply(train_test[,f,with=FALSE],1,encodeCharacter)
+    if (cat_names_size[f] > 1) {
+      train_test_orig[[f]] <- apply(train_test_orig[,f,with=FALSE],1, function(x) str_pad(x,cat_names_size[f], side="right", pad="@"))
+    }
+    train_test[[f]] <- apply(train_test_orig[,f,with=FALSE],1,encodeCharacter)
   }
 }
 
@@ -97,13 +108,17 @@ x_test = train_test[(ntrain+1):nrow(train_test),]
 #   #x_train$new_feature <- log(x_train$cont2)+x_train$cont11+x_train$cont12^-log(train$cont3)+train$cont7^2
 # }
 
-#save("x_train","x_test",file="All State Processed Data Sets")
+save("x_train","x_test","train_test_orig","y_train_raw",file="All State Processed Data Sets")
+rm(train_test)
+
+load("All State Processed Data Sets")
+feature_names = names(x_train)
 
 xgb_params = list(
   seed = 0,colsample_bytree = 0.5,colsample_bylevel=1,subsample = 0.9,
-  eta = 0.05,max_depth = 8,num_parallel_tree = 1,
+  eta = 0.01,max_depth = 12,num_parallel_tree = 1,
   min_child_weight = 1,base_score=7, gamma=1, objective=logregobj
-  objective="reg:linear"
+  #objective="reg:linear"
   )
 
 SHIFT = 200
@@ -112,15 +127,17 @@ y_train = log(y_train_raw+SHIFT)
 
 ###########
 #nonOutliers <- which(y_train_raw<50000 & y_train_raw>300)
+set.seed(100)
 strain <- sample(1:nrow(x_train),0.8*nrow(x_train))
 svalid <- setdiff(1:nrow(x_train),strain)
+
+
 
 feature.names <- colnames(x_train)
 dtrain = xgb.DMatrix(as.matrix(x_train[strain,feature.names,with=FALSE]), label=y_train[strain], missing=NA)
 dvalid = xgb.DMatrix(as.matrix(x_train[svalid,feature.names,with=FALSE]), label=y_train[svalid], missing=NA)
 #dtest = xgb.DMatrix(as.matrix(x_test), missing=NA)
 
-set.seed(100)
 watchlist <- list(valid=dvalid,train=dtrain)
 xgboost.fit <- xgb.train (data=dtrain,xgb_params,missing=NA,early.stop.round = 50,feval=xg_eval_mae,nrounds=10009,
                           maximize=FALSE,verbose=1,watchlist = watchlist)
