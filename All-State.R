@@ -13,7 +13,24 @@ library(Metrics)
 library(glmnet)
 
 set.seed(50)
-setwd("C:/R-Studio/AllState")
+setwd("C:/R-Studio/All-State-Kaggle-Competition")
+source("All-State-Functions.R")
+
+xg_eval_mae <- function (yhat, dtrain) {
+  y = getinfo(dtrain, "label")
+  #err= mae(y,yhat )
+  err= mae(exp(y)-SHIFT,exp(yhat)-SHIFT)
+  return (list(metric = "error", value = err))
+}
+
+logregobj <- function(preds, dtrain) {
+  labels = getinfo(dtrain, "label")
+  con = 2
+  x = preds - labels
+  grad = con * x / (abs(x) + con)
+  hess = con^2  / (abs(x) + con) ^2
+  return  (list(grad, hess))
+}
 
 ID = 'id'
 TARGET = 'loss'
@@ -34,6 +51,7 @@ test[, c(ID) := NULL]
 
 features = names(train)
 orig_cat_names <- colnames(train)[which(colnames(train) %like% 'cat')]
+orig_num_names <- colnames(train)[which(colnames(train) %like% 'cont')]
 
 ntrain = nrow(train)
 train_test = rbind(train, test)
@@ -54,52 +72,57 @@ encodeCharacter <- function(charcode) {
 }
 
 # Pre-processing
+# for (f in features) {
+#   if (class(train_test[[f]])=="character") {
+#     levels <- unique(train_test[[f]])
+#     train_test[[f]] <- as.integer(factor(train_test[[f]], levels=levels))
+#   }
+# }
+
 for (f in features) {
+  print(paste0('Feature : ',f))
   if (class(train_test[[f]])=="character") {
-    levels <- unique(train_test[[f]])
-    train_test[[f]] <- as.integer(factor(train_test[[f]], levels=levels))
+    train_test[[f]] <- apply(train_test[,f,with=FALSE],1,encodeCharacter)
   }
 }
 
-# for (f in features) {
-#   print(paste0('Feature : ',f))
-#   if (class(train_test[[f]])=="character") {
-#     train_test[[f]] <- apply(train_test[,f,with=FALSE],1,encodeCharacter)
-#   }
-# }
-# 
 x_train = train_test[1:ntrain,]
 x_test = train_test[(ntrain+1):nrow(train_test),]
+
+# for (f in orig_num_names) {
+#   print(f)
+#   # features_interact <- c("cat103","cat100","cat101","cat102")
+#   x_test <- getCategoryNWayInteraction(x_train,y_train,x_test,'A',f,50,eliminateOrigColumns=TRUE,FALSE)
+#   x_train <- getCategoryNWayInteraction(x_train,y_train,x_test,'T',f,50,eliminateOrigColumns=TRUE,FALSE)
+#   #x_train$new_feature <- log(x_train$cont2)+x_train$cont11+x_train$cont12^-log(train$cont3)+train$cont7^2
+# }
 
 #save("x_train","x_test",file="All State Processed Data Sets")
 
 xgb_params = list(
   seed = 0,colsample_bytree = 0.5,colsample_bylevel=1,subsample = 0.9,
-  eta = 0.005,max_depth = 12,num_parallel_tree = 1,
-  min_child_weight = 1,base_score=7, gamma=1, #objective=ln_cosh_obj
+  eta = 0.05,max_depth = 8,num_parallel_tree = 1,
+  min_child_weight = 1,base_score=7, gamma=1, objective=logregobj
   objective="reg:linear"
   )
 
-SHIFT = 180
+SHIFT = 200
 y_train = log(y_train_raw+SHIFT)
 #y_train = y_train_raw
 
-xg_eval_mae <- function (yhat, dtrain) {
-  y = getinfo(dtrain, "label")
-  #err= mae(y,yhat )
-  err= mae(exp(y)-SHIFT,exp(yhat)-SHIFT)
-  return (list(metric = "error", value = err))
-}
+###########
+#nonOutliers <- which(y_train_raw<50000 & y_train_raw>300)
+strain <- sample(1:nrow(x_train),0.8*nrow(x_train))
+svalid <- setdiff(1:nrow(x_train),strain)
 
-s <- sample(1:nrow(x_train),0.8*nrow(x_train))
 feature.names <- colnames(x_train)
-dtrain = xgb.DMatrix(as.matrix(x_train[s,feature.names,with=FALSE]), label=y_train[s], missing=NA)
-dvalid = xgb.DMatrix(as.matrix(x_train[-s,feature.names,with=FALSE]), label=y_train[-s], missing=NA)
+dtrain = xgb.DMatrix(as.matrix(x_train[strain,feature.names,with=FALSE]), label=y_train[strain], missing=NA)
+dvalid = xgb.DMatrix(as.matrix(x_train[svalid,feature.names,with=FALSE]), label=y_train[svalid], missing=NA)
 #dtest = xgb.DMatrix(as.matrix(x_test), missing=NA)
 
 set.seed(100)
 watchlist <- list(valid=dvalid,train=dtrain)
-xgboost.fit <- xgb.train (data=dtrain,xgb_params,missing=NA,early.stop.round = 10,feval=xg_eval_mae,nrounds=10009,
+xgboost.fit <- xgb.train (data=dtrain,xgb_params,missing=NA,early.stop.round = 50,feval=xg_eval_mae,nrounds=10009,
                           maximize=FALSE,verbose=1,watchlist = watchlist)
 
 # importance_matrix <- xgb.importance(model = xgboost.fit, feature.names)
