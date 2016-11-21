@@ -17,6 +17,16 @@ set.seed(50)
 setwd("C:/R-Studio/All-State-Kaggle-Competition")
 source("All-State-Functions.R")
 
+# Please right pad the characters by sign @
+encodeCharacter <- function(charcode) {
+  r = 0
+  ln = nchar(charcode)
+  for (i in 1:ln)  
+    r = r + (as.integer(charToRaw(substr(charcode,i,i)))-
+               as.integer(charToRaw('@')))  * 27^(ln-i)  
+  r
+}
+
 xg_eval_mae <- function (yhat, dtrain) {
   y = getinfo(dtrain, "label")
   #err= mae(y,yhat )
@@ -69,15 +79,6 @@ cat_names_size <- apply(train_test_orig[,orig_cat_names,with=FALSE],2,function(x
 #   r += (ord(charcode[i])-ord('A')+1)*26**(ln-i-1)
 # return r
 
-# Please right pad the characters by sign @
-encodeCharacter <- function(charcode) {
-  r = 0
-  ln = nchar(charcode)
-  for (i in 1:ln)  
-    r = r + (as.integer(charToRaw(substr(charcode,i,i)))-
-              as.integer(charToRaw('@')))  * 27^(ln-i)  
-  r
-}
 
 # Pre-processing
 # for (f in features) {
@@ -108,43 +109,88 @@ x_test = train_test[(ntrain+1):nrow(train_test),]
 #   #x_train$new_feature <- log(x_train$cont2)+x_train$cont11+x_train$cont12^-log(train$cont3)+train$cont7^2
 # }
 
-save("x_train","x_test","train_test_orig","y_train_raw",file="All State Processed Data Sets")
+save("x_train","x_test","train_test_orig","y_train_raw",
+     "orig_cat_names","orig_num_names",
+     file="All State Processed Data Sets")
 rm(train_test)
 
+
+# From here load files
 load("All State Processed Data Sets")
-feature_names = names(x_train)
 
-xgb_params = list(
-  seed = 0,colsample_bytree = 0.5,colsample_bylevel=1,subsample = 0.9,
-  eta = 0.01,max_depth = 12,num_parallel_tree = 1,
-  min_child_weight = 1,base_score=7, gamma=1, objective=logregobj
-  #objective="reg:linear"
-  )
+train_test <- rbind(x_train,x_test)
+# Binning
+for (f in orig_num_names) {
+  print(f)
+  train_test[[f]]  <- as.integer(factor(cut(train_test[[f]],1000)))
+}
+x_train <- head(train_test,nrow(x_train))
+x_test <- tail(train_test,nrow(x_test))
 
-SHIFT = 200
-y_train = log(y_train_raw+SHIFT)
-#y_train = y_train_raw
-
-###########
-#nonOutliers <- which(y_train_raw<50000 & y_train_raw>300)
 set.seed(100)
 strain <- sample(1:nrow(x_train),0.8*nrow(x_train))
 svalid <- setdiff(1:nrow(x_train),strain)
 
 
+xgb_params = list(
+  seed = 0,colsample_bytree = 0.7,colsample_bylevel=1,subsample = 0.9,
+  eta = 0.01,max_depth = 12,num_parallel_tree = 1,
+  min_child_weight = 20,base_score=7, gamma=1, objective=logregobj
+  #objective="reg:linear"
+)
 
-feature.names <- colnames(x_train)
-dtrain = xgb.DMatrix(as.matrix(x_train[strain,feature.names,with=FALSE]), label=y_train[strain], missing=NA)
-dvalid = xgb.DMatrix(as.matrix(x_train[svalid,feature.names,with=FALSE]), label=y_train[svalid], missing=NA)
-#dtest = xgb.DMatrix(as.matrix(x_test), missing=NA)
+SHIFT = 200
+y_train = log(y_train_raw+SHIFT)
 
-watchlist <- list(valid=dvalid,train=dtrain)
-xgboost.fit <- xgb.train (data=dtrain,xgb_params,missing=NA,early.stop.round = 50,feval=xg_eval_mae,nrounds=10009,
-                          maximize=FALSE,verbose=1,watchlist = watchlist)
+bestScore <- 10000
+new_feature_names <- as.vector(NULL)
+  
+for (t in 1:10000) {
+  feature.names <- colnames(x_train)
+  #feature.names <- union(orig_num_names,orig_cat_names)
+  dtrain = xgb.DMatrix(as.matrix(x_train[strain,feature.names,with=FALSE]), label=y_train[strain], missing=NA)
+  dvalid = xgb.DMatrix(as.matrix(x_train[svalid,feature.names,with=FALSE]), label=y_train[svalid], missing=NA)
+  #dtest = xgb.DMatrix(as.matrix(x_test), missing=NA)
+  
+  watchlist <- list(valid=dvalid,train=dtrain)
+  xgboost.fit <- xgb.train (data=dtrain,xgb_params,missing=NA,early.stop.round = 50,feval=xg_eval_mae,nrounds=10000,
+                            maximize=FALSE,verbose=1,watchlist = watchlist)
+  
+  importance_matrix <- xgb.importance(model = xgboost.fit, feature.names)
+  options(scipen=999)
+  print(importance_matrix,200)
+  
+  # Did we find another good score
+  print(paste0('We found a score of ', xgboost.fit$bestScore,' and the best score so far is : ',bestScore))
+  if ((bestScore-0.5) > xgboost.fit$bestScore) {
+    print('Found a better score')
+    bestScore = xgboost.fit$bestScore
+  }  else {
+    x_train <- x_train[,setdiff(feature.names,new_feature_names),with=FALSE]
+    x_test <- x_test[,setdiff(feature.names,new_feature_names),with=FALSE]
+  }
+  # Try other features
+  new_feature_names = as.vector(NULL)
+  # Create new features
+  for (i in 1:30) {
+    feature_list <- sample(intersect(orig_cat_names,importance_matrix$Feature[1:100]),10)
+    new_feature_name <- paste(feature_list,collapse="_")
+    print(paste0('Add the ',i,'nth column. New feature names is ',new_feature_name))
+    if ((!new_feature_name %in% new_feature_names) & (!new_feature_name %in% feature.names)) {
+      new_feature <- apply(train_test_orig[,feature_list,with=FALSE],1,function(x) encodeCharacter(paste(x,collapse="")))
+      x_train[,new_feature_name] <- head(new_feature,nrow(x_train))
+      x_test[,new_feature_name] <- tail(new_feature,nrow(x_test))
+      new_feature_names <- union(new_feature_names, new_feature_name)
+    }
+  }
+  
+}
 
-# importance_matrix <- xgb.importance(model = xgboost.fit, feature.names)
-# options(scipen=999)
-# print(importance_matrix,200)
+
+
+
+
+
 
 dtrain = xgb.DMatrix(as.matrix(x_train[,feature.names,with=FALSE]), label=y_train, missing=NA)
 dtest = xgb.DMatrix(as.matrix(x_test[,feature.names,with=FALSE]), missing=NA)
